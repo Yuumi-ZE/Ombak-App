@@ -1,350 +1,615 @@
-import pandas as pd
-import streamlit as st
-from datetime import datetime, timedelta
-import requests
-import plotly.express as px
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  LayoutDashboard, 
+  MonitorSmartphone, 
+  Package, 
+  Users, 
+  UserCog, 
+  LogOut, 
+  Search, 
+  ShoppingCart, 
+  Plus, 
+  Trash2, 
+  Coffee, 
+  Car, 
+  Receipt,
+  X,
+  CheckCircle2,
+  Menu
+} from 'lucide-react';
 
-# ==========================================
-# PASTE LINK KHUSUS GOOGLE APPS SCRIPT DI SINI
-# ==========================================
-GOOGLE_WEB_APP_URL = "" 
+// --- MOCK DATA ---
+const initialProducts = [
+  { id: 1, name: 'Cuci Salju Mobil Kecil', price: 40000, category: 'Car Wash', icon: 'Car' },
+  { id: 2, name: 'Cuci Salju Mobil Besar', price: 50000, category: 'Car Wash', icon: 'Car' },
+  { id: 3, name: 'Cuci Mesin + Jamur Kaca', price: 150000, category: 'Car Wash', icon: 'Car' },
+  { id: 4, name: 'Espresso', price: 18000, category: 'F&B', icon: 'Coffee' },
+  { id: 5, name: 'Ice Caffe Latte', price: 25000, category: 'F&B', icon: 'Coffee' },
+  { id: 6, name: 'Caramel Macchiato', price: 30000, category: 'F&B', icon: 'Coffee' },
+  { id: 7, name: 'French Fries', price: 15000, category: 'F&B', icon: 'Package' },
+];
 
-# ==========================================
-# KONFIGURASI HALAMAN
-# ==========================================
-# Mengubah ikon menjadi lebih minimalis
-st.set_page_config(page_title="CleanWash POS", page_icon="🫧", layout="wide")
+const initialEmployees = [
+  { id: 1, name: 'Budi Santoso', role: 'Washer', phone: '08123456789' },
+  { id: 2, name: 'Siti Aminah', role: 'Barista', phone: '08129876543' },
+];
 
-# CSS KHUSUS UNTUK TAMPILAN MODERN
-st.markdown("""
-    <style>
-        footer {visibility: hidden;} 
-        header {visibility: hidden;}
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; background-color: #f8f9fa; }
-        .stButton>button { border-radius: 8px; height: 3rem; }
-        
-        .metric-card {
-            background-color: white; border-radius: 15px; padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.02); border: 1px solid #f0f0f0; margin-bottom: 20px;
+const initialUsers = [
+  { id: 1, username: 'admin', name: 'Super Admin', role: 'Admin' },
+  { id: 2, username: 'kasir1', name: 'Andi Kasir', role: 'Cashier' },
+];
+
+const initialTransactions = [
+  { id: 'TRX-1001', date: new Date().toISOString(), total: 65000, items: [{ name: 'Cuci Salju Mobil Besar', qty: 1, price: 50000 }, { name: 'French Fries', qty: 1, price: 15000 }] }
+];
+
+// --- UTILS ---
+const formatRupiah = (number) => {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
+};
+
+// --- COMPONENTS ---
+
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="font-semibold text-lg text-slate-800">{title}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('pos');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // State Management
+  const [products, setProducts] = useState(initialProducts);
+  const [employees, setEmployees] = useState(initialEmployees);
+  const [users, setUsers] = useState(initialUsers);
+  const [transactions, setTransactions] = useState(initialTransactions);
+
+  // Layout Wrapper
+  const Layout = ({ children }) => (
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
+      {/* Sidebar Overlay for Mobile */}
+      {!isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-20 lg:hidden"
+          onClick={() => setIsSidebarOpen(true)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 z-30 transition-transform duration-300 flex flex-col`}>
+        <div className="h-16 flex items-center px-6 border-b border-slate-100">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+            <Car size={20} className="text-white" />
+          </div>
+          <span className="font-bold text-xl tracking-tight text-slate-900">Wash & Brew</span>
+          <button className="ml-auto lg:hidden" onClick={() => setIsSidebarOpen(false)}>
+            <X size={20} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">Main Menu</div>
+          <NavItem icon={<MonitorSmartphone />} label="POS / Kasir" isActive={activeTab === 'pos'} onClick={() => {setActiveTab('pos'); setIsSidebarOpen(false);}} />
+          <NavItem icon={<LayoutDashboard />} label="Dashboard" isActive={activeTab === 'dashboard'} onClick={() => {setActiveTab('dashboard'); setIsSidebarOpen(false);}} />
+          
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-8 mb-2 px-3">Admin Panel</div>
+          <NavItem icon={<Package />} label="Layanan & Produk" isActive={activeTab === 'products'} onClick={() => {setActiveTab('products'); setIsSidebarOpen(false);}} />
+          <NavItem icon={<Users />} label="Pegawai" isActive={activeTab === 'employees'} onClick={() => {setActiveTab('employees'); setIsSidebarOpen(false);}} />
+          <NavItem icon={<UserCog />} label="Pengguna" isActive={activeTab === 'users'} onClick={() => {setActiveTab('users'); setIsSidebarOpen(false);}} />
+        </div>
+
+        <div className="p-4 border-t border-slate-100">
+          <button className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors">
+            <LogOut size={18} className="mr-3" />
+            Keluar Sistem
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+        {/* Top Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 z-10">
+          <div className="flex items-center">
+            <button className="p-2 mr-2 lg:hidden text-slate-600 hover:bg-slate-100 rounded-lg" onClick={() => setIsSidebarOpen(true)}>
+              <Menu size={24} />
+            </button>
+            <h1 className="text-xl font-semibold text-slate-800 capitalize">
+              {activeTab === 'pos' ? 'Point of Sale' : activeTab.replace('-', ' ')}
+            </h1>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-right hidden sm:block">
+              <p className="font-medium text-slate-700">Andi Kasir</p>
+              <p className="text-xs text-slate-500">Cashier</p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center text-blue-700 font-bold">
+              AK
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-8">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+
+  const NavItem = ({ icon, label, isActive, onClick }) => (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center px-4 py-3 rounded-xl mb-1 transition-all duration-200 ${
+        isActive 
+          ? 'bg-blue-50 text-blue-700 font-medium' 
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      <span className={`mr-3 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+        {React.cloneElement(icon, { size: 20 })}
+      </span>
+      {label}
+    </button>
+  );
+
+  // --- VIEWS ---
+
+  const POSView = () => {
+    const [cart, setCart] = useState([]);
+    const [filter, setFilter] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showCheckoutSuccess, setShowCheckoutSuccess] = useState(false);
+
+    const filteredProducts = useMemo(() => {
+      return products.filter(p => {
+        const matchCategory = filter === 'All' || p.category === filter;
+        const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchCategory && matchSearch;
+      });
+    }, [products, filter, searchQuery]);
+
+    const addToCart = (product) => {
+      setCart(prev => {
+        const existing = prev.find(item => item.product.id === product.id);
+        if (existing) {
+          return prev.map(item => item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item);
         }
-        .metric-title { color: #8c8c8c; font-size: 14px; font-weight: 500; margin-bottom: 10px; }
-        .metric-value { color: #262626; font-size: 28px; font-weight: bold; margin-bottom: 5px; }
-        .metric-trend-up { color: #52c41a; font-size: 12px; font-weight: bold; }
-        .metric-trend-down { color: #f5222d; font-size: 12px; font-weight: bold; }
-        
-        .recent-visit { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
-        .recent-visit:last-child { border-bottom: none; }
-        .visit-name { font-weight: 600; font-size: 14px; color: #262626; }
-        .visit-service { font-size: 12px; color: #8c8c8c; }
-        .visit-time { font-size: 12px; font-weight: 500; color: #262626; }
-    </style>
-""", unsafe_allow_html=True)
+        return [...prev, { product, qty: 1 }];
+      });
+    };
 
-# ==========================================
-# INISIALISASI DATA
-# ==========================================
-if "users" not in st.session_state:
-    st.session_state.users = pd.DataFrame([
-        {"Username": "admin", "Password": "123", "Role": "Owner", "Nama": "Pemilik Utama"},
-        {"Username": "kasir1", "Password": "123", "Role": "Kasir", "Nama": "Kasir Shift Pagi"},
-    ])
+    const updateQty = (productId, delta) => {
+      setCart(prev => prev.map(item => {
+        if (item.product.id === productId) {
+          const newQty = item.qty + delta;
+          return newQty > 0 ? { ...item, qty: newQty } : item;
+        }
+        return item;
+      }).filter(item => item.qty > 0));
+    };
 
-if "services" not in st.session_state:
-    st.session_state.services = pd.DataFrame([
-        {"Kategori": "Mobil", "Layanan": "Cuci Salju", "Harga": 50000, "FeeDefault": 15000},
-        {"Kategori": "Mobil", "Layanan": "Cuci + Wax", "Harga": 80000, "FeeDefault": 20000},
-        {"Kategori": "Motor", "Layanan": "Cuci Standar", "Harga": 20000, "FeeDefault": 7000},
-        {"Kategori": "Karpet", "Layanan": "Cuci Karpet", "Harga": 40000, "FeeDefault": 10000},
-    ])
+    const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
 
-if "staff" not in st.session_state:
-    st.session_state.staff = pd.DataFrame([
-        {"Nama": "Budi", "Peran": "Pencuci"},
-        {"Nama": "Siti", "Peran": "Pencuci"},
-        {"Nama": "Agus", "Peran": "Pencuci"},
-    ])
+    const handleCheckout = () => {
+      if (cart.length === 0) return;
+      const newTrx = {
+        id: `TRX-${1000 + transactions.length + 1}`,
+        date: new Date().toISOString(),
+        total: cartTotal,
+        items: cart.map(c => ({ name: c.product.name, qty: c.qty, price: c.product.price }))
+      };
+      setTransactions([newTrx, ...transactions]);
+      setShowCheckoutSuccess(true);
+      setCart([]);
+      setTimeout(() => setShowCheckoutSuccess(false), 3000);
+    };
 
-if "transactions" not in st.session_state:
-    today = datetime.now()
-    dummy_data = []
-    for i in range(10, -1, -1):
-        d = today - timedelta(days=i)
-        date_str = d.strftime("%Y-%m-%d")
-        dummy_data.append({"Tanggal": date_str, "Waktu": "09:00", "Pelanggan": f"Pelanggan A{i}", "Layanan": "Cuci Salju", "Kategori": "Mobil", "Harga Total": 50000, "Staff Tugas": "Budi", "Total Fee": 15000})
-        dummy_data.append({"Tanggal": date_str, "Waktu": "11:30", "Pelanggan": f"Pelanggan B{i}", "Layanan": "Cuci Standar", "Kategori": "Motor", "Harga Total": 20000, "Staff Tugas": "Siti", "Total Fee": 7000})
-            
-    st.session_state.transactions = pd.DataFrame(dummy_data)
+    return (
+      <div className="flex flex-col lg:flex-row gap-6 h-full">
+        {/* Left: Products */}
+        <div className="flex-1 flex flex-col h-full">
+          {/* Filters & Search */}
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div className="flex space-x-2 bg-white p-1 rounded-xl shadow-sm border border-slate-200 w-full sm:w-auto">
+              {['All', 'Car Wash', 'F&B'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFilter(cat)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-none ${
+                    filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Cari menu..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              />
+            </div>
+          </div>
 
-if "role" not in st.session_state: 
-    st.session_state.role = None
-    st.session_state.current_user = None
+          {/* Product Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-20 lg:pb-0 pr-2">
+            {filteredProducts.map(product => (
+              <div 
+                key={product.id} 
+                onClick={() => addToCart(product)}
+                className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  {product.icon === 'Car' ? <Car size={24} className="text-blue-600" /> : 
+                   product.icon === 'Coffee' ? <Coffee size={24} className="text-amber-600" /> :
+                   <Package size={24} className="text-green-600" />}
+                </div>
+                <div className="mt-auto">
+                  <h3 className="font-semibold text-slate-800 text-sm mb-1 leading-tight">{product.name}</h3>
+                  <p className="text-blue-600 font-bold">{formatRupiah(product.price)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-def do_login(username, password):
-    df_users = st.session_state.users
-    user_match = df_users[(df_users['Username'] == username) & (df_users['Password'] == password)]
-    
-    if not user_match.empty:
-        st.session_state.role = user_match.iloc[0]['Role']
-        st.session_state.current_user = user_match.iloc[0]['Nama']
-    else:
-        st.error("Username atau Password salah!")
+        {/* Right: Cart */}
+        <div className="w-full lg:w-96 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[500px] lg:h-full shrink-0">
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="font-bold text-lg flex items-center">
+              <ShoppingCart className="mr-2 text-blue-600" size={20} />
+              Pesanan
+            </h2>
+            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
+              {cart.reduce((sum, item) => sum + item.qty, 0)} Item
+            </span>
+          </div>
 
-def logout(): 
-    st.session_state.role = None
-    st.session_state.current_user = None
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                <Receipt size={48} className="mb-4 opacity-20" />
+                <p>Belum ada pesanan</p>
+              </div>
+            ) : (
+              cart.map(item => (
+                <div key={item.product.id} className="flex justify-between items-center group">
+                  <div className="flex-1 pr-4">
+                    <h4 className="font-medium text-slate-800 text-sm truncate">{item.product.name}</h4>
+                    <p className="text-slate-500 text-xs">{formatRupiah(item.product.price)}</p>
+                  </div>
+                  <div className="flex items-center space-x-3 bg-slate-50 rounded-lg p-1 border border-slate-100">
+                    <button onClick={() => updateQty(item.product.id, -1)} className="w-7 h-7 flex items-center justify-center bg-white rounded shadow-sm text-slate-600 hover:text-blue-600">-</button>
+                    <span className="font-semibold text-sm w-4 text-center">{item.qty}</span>
+                    <button onClick={() => updateQty(item.product.id, 1)} className="w-7 h-7 flex items-center justify-center bg-white rounded shadow-sm text-slate-600 hover:text-blue-600">+</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
 
-# ==========================================
-# HALAMAN LOGIN
-# ==========================================
-if st.session_state.role is None:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🫧 CleanWash POS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8c8c8c;'>Silakan masuk dengan akun Anda</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        with st.form("login_form"):
-            st.markdown("<div style='background-color: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Masuk", type="primary", use_container_width=True)
-            
-            if submitted:
-                do_login(username, password)
-                if st.session_state.role:
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-        st.info("Default Owner: admin | pass: 123 \nDefault Kasir: kasir1 | pass: 123")
-    st.stop()
+          <div className="p-5 bg-slate-50 rounded-b-3xl border-t border-slate-100">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-slate-500 font-medium">Total Harga</span>
+              <span className="text-2xl font-bold text-slate-900">{formatRupiah(cartTotal)}</span>
+            </div>
+            <button 
+              onClick={handleCheckout}
+              disabled={cart.length === 0}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex justify-center items-center"
+            >
+              Proses Pembayaran
+            </button>
+          </div>
+        </div>
 
-# ==========================================
-# HALAMAN KASIR
-# ==========================================
-if st.session_state.role == "Kasir":
-    st.sidebar.markdown(f"<h2 style='text-align: center; color: #1E88E5;'>🫧 Kasir Panel</h2>", unsafe_allow_html=True)
-    st.sidebar.caption(f"Login sebagai: **{st.session_state.current_user}**")
-    st.sidebar.markdown("---")
-    
-    menu_kasir = st.sidebar.radio("Navigasi", ["🛒 Transaksi Baru", "📋 Riwayat Hari Ini"])
-    
-    st.sidebar.markdown("---")
-    st.sidebar.button("🚪 Keluar", on_click=logout, use_container_width=True)
+        {/* Success Alert */}
+        {showCheckoutSuccess && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-emerald-50 text-emerald-700 px-6 py-3 rounded-full shadow-lg shadow-emerald-900/10 border border-emerald-200 flex items-center z-50 animate-in slide-in-from-top-10 fade-in duration-300">
+            <CheckCircle2 size={20} className="mr-2" />
+            <span className="font-medium">Pembayaran Berhasil!</span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
-    if menu_kasir == "🛒 Transaksi Baru":
-        st.title(f"Pencatatan Transaksi")
-        st.markdown("---")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("### Detail Pesanan")
-            pelanggan = st.text_input("Nama Pelanggan / Plat", placeholder="Contoh: B 1234 XYZ")
-            opsi_layanan = [f"[{r['Kategori']}] {r['Layanan']} - Rp {r['Harga']:,}" for i, r in st.session_state.services.iterrows()]
-            layanan_terpilih = st.selectbox("Pilih Layanan", opsi_layanan)
-            data_layanan = st.session_state.services.iloc[opsi_layanan.index(layanan_terpilih)]
-            
-        with col2:
-            st.markdown("### Penugasan Pekerja")
-            list_pencuci = st.session_state.staff[st.session_state.staff["Peran"] == "Pencuci"]["Nama"].tolist()
-            staff_tugas = st.multiselect("Pilih Pekerja (Bisa > 1)", list_pencuci)
-            st.info(f"**Total Tagihan:** Rp {data_layanan['Harga']:,}\n**Fee Pekerja:** Rp {data_layanan['FeeDefault']:,}")
-            
-        if st.button("Selesaikan Transaksi", type="primary", use_container_width=True):
-            if not pelanggan or not staff_tugas:
-                st.error("Data pelanggan dan pekerja harus diisi!")
-            else:
-                now = datetime.now()
-                tgl, wkt = now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
-                pekerja = ", ".join(staff_tugas)
-                
-                new_trx = pd.DataFrame([{
-                    "Tanggal": tgl, "Waktu": wkt, "Pelanggan": pelanggan, 
-                    "Layanan": data_layanan["Layanan"], "Kategori": data_layanan["Kategori"], 
-                    "Harga Total": int(data_layanan["Harga"]), "Staff Tugas": pekerja, 
-                    "Total Fee": int(data_layanan["FeeDefault"])
-                }])
-                st.session_state.transactions = pd.concat([st.session_state.transactions, new_trx], ignore_index=True)
-                
-                if GOOGLE_WEB_APP_URL != "":
-                    payload = {
-                        "action": "transaksi", "tanggal": tgl, "waktu": wkt, "pelanggan": pelanggan,
-                        "layanan": data_layanan["Layanan"], "kategori": data_layanan["Kategori"],
-                        "harga": int(data_layanan["Harga"]), "staff": pekerja, "fee": int(data_layanan["FeeDefault"])
-                    }
-                    try:
-                        requests.post(GOOGLE_WEB_APP_URL, data=payload)
-                        st.success("Transaksi dicatat dan dikirim!")
-                    except Exception:
-                        st.warning("Tersimpan lokal, gagal kirim ke Drive.")
-                else:
-                    st.success("Transaksi berhasil dicatat.")
-                    
-    elif menu_kasir == "📋 Riwayat Hari Ini":
-        st.title("Riwayat Hari Ini")
-        
-        now_str = datetime.now().strftime("%Y-%m-%d")
-        df_trx = st.session_state.transactions
-        df_today = df_trx[df_trx["Tanggal"] == now_str]
-        
-        col1, col2 = st.columns(2)
-        total_uang_masuk = df_today['Harga Total'].sum() if not df_today.empty else 0
-        total_mobil_motor = len(df_today)
-        
-        col1.metric("Total Uang Masuk", f"Rp {total_uang_masuk:,}")
-        col2.metric("Total Kendaraan", f"{total_mobil_motor} Unit")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-        if not df_today.empty:
-            st.dataframe(df_today.drop(columns=["Total Fee"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("Belum ada transaksi hari ini.")
-        st.markdown("</div>", unsafe_allow_html=True)
+  const DashboardView = () => {
+    const todayTotal = transactions.reduce((sum, trx) => sum + trx.total, 0);
+    const todayItems = transactions.reduce((sum, trx) => sum + trx.items.length, 0);
 
-# ==========================================
-# HALAMAN OWNER
-# ==========================================
-elif st.session_state.role == "Owner":
-    st.sidebar.markdown(f"<h2 style='text-align: center; color: #1E88E5;'>🫧 Owner Panel</h2>", unsafe_allow_html=True)
-    st.sidebar.caption(f"Login sebagai: **{st.session_state.current_user}**")
-    st.sidebar.markdown("---")
-    menu = st.sidebar.radio("Navigasi", [
-        "📊 Dashboard", 
-        "⚙️ Master Data", 
-        "💸 Penggajian", 
-        "📋 Riwayat Global"
-    ])
-    st.sidebar.markdown("---")
-    st.sidebar.button("🚪 Keluar", on_click=logout, use_container_width=True)
+    return (
+      <div className="space-y-6">
+        {/* Metric Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mr-4">
+              <Receipt className="text-blue-600" size={28} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Pendapatan Hari Ini</p>
+              <h3 className="text-2xl font-bold text-slate-900">{formatRupiah(todayTotal)}</h3>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mr-4">
+              <ShoppingCart className="text-amber-600" size={28} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Total Transaksi</p>
+              <h3 className="text-2xl font-bold text-slate-900">{transactions.length} Trx</h3>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mr-4">
+              <Package className="text-emerald-600" size={28} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Layanan Terjual</p>
+              <h3 className="text-2xl font-bold text-slate-900">{todayItems} Item</h3>
+            </div>
+          </div>
+        </div>
 
-    df_trx = st.session_state.transactions
+        {/* Recent Transactions */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100">
+            <h3 className="font-bold text-lg text-slate-800">Riwayat Transaksi Terakhir</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-sm">
+                  <th className="px-6 py-4 font-medium">ID Transaksi</th>
+                  <th className="px-6 py-4 font-medium">Waktu</th>
+                  <th className="px-6 py-4 font-medium">Item</th>
+                  <th className="px-6 py-4 font-medium text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="px-6 py-8 text-center text-slate-400">Belum ada transaksi</td>
+                  </tr>
+                ) : (
+                  transactions.map(trx => (
+                    <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-900">{trx.id}</td>
+                      <td className="px-6 py-4 text-slate-500 text-sm">
+                        {new Date(trx.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {trx.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-900 text-right">{formatRupiah(trx.total)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
-    if menu == "📊 Dashboard":
-        st.markdown("<h2 style='color: #262626;'>Dashboard Analytics</h2>", unsafe_allow_html=True)
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_pemasukan = df_trx['Harga Total'].sum() if not df_trx.empty else 0
-        total_fee = df_trx['Total Fee'].sum() if not df_trx.empty else 0
-        pemasukan_bersih = total_pemasukan - total_fee
-        total_transaksi = len(df_trx)
-        
-        with col1:
-            st.markdown(f"""<div class="metric-card"><div class="metric-title">Pendapatan Kotor</div><div class="metric-value">Rp {total_pemasukan:,}</div></div>""", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""<div class="metric-card"><div class="metric-title">Pemasukan Bersih</div><div class="metric-value">Rp {pemasukan_bersih:,}</div></div>""", unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""<div class="metric-card"><div class="metric-title">Total Transaksi</div><div class="metric-value">{total_transaksi}</div></div>""", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"""<div class="metric-card"><div class="metric-title">Total Fee Staff</div><div class="metric-value">Rp {total_fee:,}</div></div>""", unsafe_allow_html=True)
+  const AdminProductsView = () => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [formData, setFormData] = useState({ name: '', price: '', category: 'Car Wash' });
 
-        chart_col1, chart_col2 = st.columns([7, 3])
-        with chart_col1:
-            st.markdown("<div style='background-color: white; padding: 20px; border-radius: 15px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-            st.markdown("#### Tren Pendapatan Harian")
-            if not df_trx.empty:
-                daily_trend = df_trx.groupby('Tanggal')['Harga Total'].sum().reset_index()
-                fig_bar = px.bar(daily_trend, x='Tanggal', y='Harga Total', text='Harga Total', color_discrete_sequence=['#4C6FFF'])
-                fig_bar.update_layout(plot_bgcolor='white', paper_bgcolor='white', margin=dict(l=0, r=0, t=0, b=0), height=320, xaxis=dict(showgrid=False, title=""), yaxis=dict(showgrid=True, gridcolor='#f0f0f0', title=""))
-                st.plotly_chart(fig_bar, use_container_width=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-        with chart_col2:
-            st.markdown("<div style='background-color: white; padding: 20px; border-radius: 15px; border: 1px solid #f0f0f0; height: 100%;'>", unsafe_allow_html=True)
-            st.markdown("#### Proporsi Kategori")
-            if not df_trx.empty:
-                cat_dist = df_trx['Kategori'].value_counts().reset_index()
-                cat_dist.columns = ['Kategori', 'Jumlah']
-                fig_pie = px.pie(cat_dist, values='Jumlah', names='Kategori', hole=0.65, color_discrete_sequence=['#4C6FFF', '#FF7F50', '#20B2AA'])
-                fig_pie.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(l=0, r=0, t=20, b=0), height=300)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+    const handleSave = (e) => {
+      e.preventDefault();
+      const newProduct = {
+        id: Date.now(),
+        name: formData.name,
+        price: parseInt(formData.price),
+        category: formData.category,
+        icon: formData.category === 'Car Wash' ? 'Car' : 'Coffee'
+      };
+      setProducts([...products, newProduct]);
+      setIsModalOpen(false);
+      setFormData({ name: '', price: '', category: 'Car Wash' });
+    };
 
-    elif menu == "⚙️ Master Data":
-        st.markdown("<h2 style='color: #262626;'>Pengaturan & Master Data</h2>", unsafe_allow_html=True)
-        tab_akun, tab_layanan, tab_staff = st.tabs(["Akun Pengguna", "Layanan & Harga", "Pegawai Pencuci"])
-        
-        with tab_akun:
-            st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-            edited_users = st.data_editor(st.session_state.users, num_rows="dynamic", use_container_width=True)
-            if st.button("Simpan Perubahan Akun", type="primary"):
-                st.session_state.users = edited_users
-                st.success("Data akun login berhasil diperbarui!")
-            st.markdown("</div>", unsafe_allow_html=True)
+    const handleDelete = (id) => {
+      setProducts(products.filter(p => p.id !== id));
+    };
 
-        with tab_layanan:
-            st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-            edited_services_full = st.data_editor(st.session_state.services, num_rows="dynamic", use_container_width=True, height=300)
-            if st.button("Simpan Perubahan Layanan", key="btn_srv", type="primary"): 
-                st.session_state.services = edited_services_full
-                st.success("Update layanan berhasil disimpan!")
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-        with tab_staff:
-            st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-            edited_staff = st.data_editor(st.session_state.staff, num_rows="dynamic", use_container_width=True, height=300)
-            if st.button("Simpan Perubahan Pegawai", type="primary"): 
-                st.session_state.staff = edited_staff
-                st.success("Data pegawai berhasil diperbarui!")
-            st.markdown("</div>", unsafe_allow_html=True)
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">Manajemen Layanan & Produk</h2>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center shadow-sm"
+          >
+            <Plus size={18} className="mr-1.5" /> Tambah Produk
+          </button>
+        </div>
 
-    elif menu == "💸 Penggajian":
-        st.markdown("<h2 style='color: #262626;'>Hitung Gaji Pegawai</h2>", unsafe_allow_html=True)
-        st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-        
-        list_pencuci = st.session_state.staff[st.session_state.staff["Peran"] == "Pencuci"]["Nama"].tolist()
-        pilih_pegawai = st.selectbox("Pilih Pegawai", list_pencuci)
-        
-        df_trx = st.session_state.transactions
-        fee_terkumpul = 0
-        detail_pekerjaan_list = []
-        
-        if not df_trx.empty:
-            df_pegawai = df_trx[df_trx['Staff Tugas'].astype(str).str.contains(pilih_pegawai, na=False)]
-            if not df_pegawai.empty:
-                st.dataframe(df_pegawai[["Tanggal", "Layanan", "Kategori", "Harga Total", "Total Fee"]], use_container_width=True, hide_index=True)
-                for idx, row in df_pegawai.iterrows():
-                    jumlah_staff = len(str(row["Staff Tugas"]).split(","))
-                    fee_bagian = row["Total Fee"] / jumlah_staff
-                    fee_terkumpul += fee_bagian
-                    detail_pekerjaan_list.append(f"- {row['Tanggal']}: {row['Layanan']} (Fee: Rp{int(fee_bagian)})")
-            else:
-                st.info("Belum ada riwayat transaksi.")
-        
-        detail_pekerjaan_str = "\n".join(detail_pekerjaan_list) if detail_pekerjaan_list else "Tidak ada transaksi."
-        
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            fee_input = st.number_input("Total Fee", value=int(fee_terkumpul), step=1000)
-            makan_bruto = st.number_input("Uang Makan (+)", value=0, step=1000)
-        with col2:
-            makan_diambil = st.number_input("Makan Diambil (-)", value=0, step=1000)
-            kasbon = st.number_input("Kasbon (-)", value=0, step=1000)
-            
-        gaji_bersih = fee_input + makan_bruto - makan_diambil - kasbon
-        st.success(f"**Gaji Bersih:** Rp {gaji_bersih:,.0f}")
-        
-        if st.button("Kirim Laporan ke Drive", type="primary", use_container_width=True):
-            if GOOGLE_WEB_APP_URL != "":
-                now = datetime.now()
-                payload = {
-                    "action": "gaji", "tanggal": now.strftime("%Y-%m-%d %H:%M"),
-                    "bulan": now.strftime("%B %Y"), "staff": pilih_pegawai,
-                    "detail_pekerjaan": detail_pekerjaan_str, "fee": int(fee_input),
-                    "makan_bruto": int(makan_bruto), "makan_diambil": int(makan_diambil),
-                    "kasbon": int(kasbon), "gaji_bersih": int(gaji_bersih)
-                }
-                try:
-                    requests.post(GOOGLE_WEB_APP_URL, data=payload)
-                    st.success("Laporan berhasil dikirim!")
-                except Exception:
-                    st.error("Gagal terhubung ke Google Drive.")
-            else:
-                st.error("Link Web App Google kosong.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-    elif menu == "📋 Riwayat Global":
-        st.markdown("<h2 style='color: #262626;'>Riwayat Transaksi Global</h2>", unsafe_allow_html=True)
-        st.markdown("<div style='background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
-        st.dataframe(st.session_state.transactions, use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-sm">
+                <th className="px-6 py-4 font-medium">Nama Produk</th>
+                <th className="px-6 py-4 font-medium">Kategori</th>
+                <th className="px-6 py-4 font-medium">Harga</th>
+                <th className="px-6 py-4 font-medium text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {products.map(p => (
+                <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-slate-900 flex items-center">
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center mr-3 ${p.category === 'Car Wash' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                      {p.category === 'Car Wash' ? <Car size={16}/> : <Coffee size={16}/>}
+                    </span>
+                    {p.name}
+                  </td>
+                  <td className="px-6 py-4 text-slate-500 text-sm">
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${p.category === 'Car Wash' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {p.category}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-slate-900 font-medium">{formatRupiah(p.price)}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Tambah Produk Baru">
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nama Layanan/Produk</label>
+              <input 
+                required
+                type="text" 
+                value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                placeholder="Misal: Cuci Hidrolik"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Harga (Rp)</label>
+              <input 
+                required
+                type="number" 
+                value={formData.price}
+                onChange={e => setFormData({...formData, price: e.target.value})}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                placeholder="50000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Kategori</label>
+              <select 
+                value={formData.category}
+                onChange={e => setFormData({...formData, category: e.target.value})}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              >
+                <option value="Car Wash">Car Wash</option>
+                <option value="F&B">F&B / Kedai Kopi</option>
+              </select>
+            </div>
+            <div className="pt-4 flex justify-end space-x-3">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition-colors">Batal</button>
+              <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors">Simpan Data</button>
+            </div>
+          </form>
+        </Modal>
+      </div>
+    );
+  };
+
+  const AdminEmployeesView = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">Manajemen Pegawai</h2>
+          <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center shadow-sm">
+            <Plus size={18} className="mr-1.5" /> Tambah Pegawai
+          </button>
+        </div>
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-sm">
+                <th className="px-6 py-4 font-medium">Nama Pegawai</th>
+                <th className="px-6 py-4 font-medium">Posisi (Role)</th>
+                <th className="px-6 py-4 font-medium">No. Telepon</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {employees.map(emp => (
+                <tr key={emp.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-slate-900">{emp.name}</td>
+                  <td className="px-6 py-4 text-slate-500">
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${emp.role === 'Washer' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {emp.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-slate-600">{emp.phone}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const AdminUsersView = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">Manajemen Akun Pengguna</h2>
+          <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center shadow-sm">
+            <Plus size={18} className="mr-1.5" /> Tambah User
+          </button>
+        </div>
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-sm">
+                <th className="px-6 py-4 font-medium">Nama Lengkap</th>
+                <th className="px-6 py-4 font-medium">Username</th>
+                <th className="px-6 py-4 font-medium">Role Akses</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {users.map(u => (
+                <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-slate-900">{u.name}</td>
+                  <td className="px-6 py-4 text-slate-600">{u.username}</td>
+                  <td className="px-6 py-4 text-slate-500">
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${u.role === 'Admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>
+                      {u.role}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // --- RENDER ROUTER ---
+  return (
+    <Layout>
+      {activeTab === 'pos' && <POSView />}
+      {activeTab === 'dashboard' && <DashboardView />}
+      {activeTab === 'products' && <AdminProductsView />}
+      {activeTab === 'employees' && <AdminEmployeesView />}
+      {activeTab === 'users' && <AdminUsersView />}
+    </Layout>
+  );
+}
